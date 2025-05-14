@@ -1,7 +1,8 @@
 import streamlit as st
 import numpy as np
 import pandas as pd
-import matplotlib.pyplot as plt
+import plotly.graph_objects as go
+import plotly.express as px
 
 st.set_page_config(page_title="Scrum Monte Carlo Forecast", layout="wide")
 st.title("🌀 Monte Carlo Forecast for Scrum Masters")
@@ -55,35 +56,41 @@ try:
             outcomes.append(sprints)
             burnup_data.append(sprint_progress)
 
-        # Eredmény statisztikák
-        p_val = int(np.percentile(outcomes, confidence))
-        st.success(f"✅ {confidence}%-os valószínűséggel {p_val} sprint alatt kész lesz a projekt.")
+        p_vals = {c: int(np.percentile(outcomes, c)) for c in [50, 80, 90, 95]}
 
-        # Histogram
-        st.subheader("⏳ Sprint szükséglet eloszlása")
-        fig1, ax1 = plt.subplots()
-        ax1.hist(outcomes, bins=range(min(outcomes), max(outcomes)+1), edgecolor='black')
-        ax1.set_xlabel("Szükséges sprintek")
-        ax1.set_ylabel("Gyakoriság")
-        ax1.set_title("Monte Carlo eloszlás")
-        st.pyplot(fig1)
+        st.markdown("""
+        ### 📦 Előrejelzés (valószínűségi becslések)
+        """)
+        cols = st.columns(4)
+        for i, c in enumerate([50, 80, 90, 95]):
+            with cols[i]:
+                st.metric(label=f"{c}% valószínűségi határ", value=f"{p_vals[c]} sprint")
 
-        # Burnup chart
-        st.subheader("📈 Szimulált Burnup Chart (20 minta)")
-        fig2, ax2 = plt.subplots()
+        # Histogram Plotly
+        hist_fig = px.histogram(outcomes, nbins=max(outcomes)-min(outcomes)+1, labels={'value': 'Szükséges sprintek'},
+                                title="Monte Carlo eloszlás", opacity=0.75)
+        for c in [80, 90, 95]:
+            hist_fig.add_vline(x=p_vals[c], line_dash="dot", annotation_text=f"{c}%: {p_vals[c]}",
+                               annotation_position="top right")
+        hist_fig.update_layout(height=400)
+        st.plotly_chart(hist_fig, use_container_width=True)
+
+        # Burnup Chart
+        burnup_fig = go.Figure()
         for i in range(min(20, len(burnup_data))):
-            ax2.plot(burnup_data[i], alpha=0.4)
-        ax2.axhline(y=total_points, color="red", linestyle="--", label="Cél")
-        ax2.set_title("Burnup Chart szimuláció")
-        ax2.set_xlabel("Sprint")
-        ax2.set_ylabel("Elvégzett story point")
-        ax2.legend()
-        st.pyplot(fig2)
+            burnup_fig.add_trace(go.Scatter(y=burnup_data[i], mode='lines', line=dict(width=1), opacity=0.4,
+                                            showlegend=False))
+        burnup_fig.add_hline(y=total_points, line_dash="dot", line_color="red", annotation_text="Cél", 
+                             annotation_position="bottom right")
+        burnup_fig.update_layout(title="Szimulált Burnup Chart (20 minta)", height=400,
+                                 xaxis_title="Sprint", yaxis_title="Elvégzett story point")
+        st.plotly_chart(burnup_fig, use_container_width=True)
 
         # Letölthető riport
         df_outcomes = pd.DataFrame({"simulated_sprints": outcomes})
         csv = df_outcomes.to_csv(index=False)
-        st.download_button("⬇️ Eredmények letöltése CSV-ben", csv, file_name="montecarlo_sprint_forecast.csv", mime='text/csv')
+        st.download_button("⬇️ Eredmények letöltése CSV-ben", csv,
+                           file_name="montecarlo_sprint_forecast.csv", mime='text/csv')
 
 except Exception as e:
     st.warning(f"Hiba az adatfeldolgozásban: {e}")
